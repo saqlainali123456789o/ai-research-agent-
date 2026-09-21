@@ -1,4 +1,4 @@
-```python
+
 import streamlit as st
 from openai import OpenAI
 
@@ -404,4 +404,3 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
-```
