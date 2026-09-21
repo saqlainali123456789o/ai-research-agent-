@@ -1,4 +1,3 @@
-
 import re
 from urllib.parse import urlparse
 
@@ -12,140 +11,155 @@ from crewai.tools import tool
 UA = "Mozilla/5.0 (compatible; AIResearchAgent/1.0)"
 
 
-# ---------------------------------------------------------
-# URL / TEXT HELPERS
-# ---------------------------------------------------------
+# ============================================================
+# DOMAIN
+# ============================================================
 
 def domain(url):
     try:
-        return urlparse(url).netloc.lower().removeprefix("www.")
+        return (
+            urlparse(url)
+            .netloc
+            .lower()
+            .removeprefix("www.")
+        )
     except Exception:
         return ""
 
 
-def clean(text, limit=12000):
-    text = re.sub(r"\s+", " ", text or "").strip()
+# ============================================================
+# CLEAN TEXT
+# ============================================================
+
+def clean(text, limit=9000):
+
+    text = re.sub(
+        r"\s+",
+        " ",
+        text or ""
+    ).strip()
+
     return text[:limit]
 
 
-# ---------------------------------------------------------
+# ============================================================
 # WEB SEARCH
-# ---------------------------------------------------------
+# ============================================================
 
-def search_web(query, max_results=8):
+def search_web(
+    query,
+    max_results=5
+):
 
-    results = []
+    rows = []
 
     try:
 
         with DDGS() as ddgs:
 
-            rows = ddgs.text(
+            for item in ddgs.text(
                 query,
-                region="us-en",
-                safesearch="moderate",
-                max_results=max_results,
-                backend="auto",
-            )
+                max_results=max_results
+            ):
 
-        for item in rows:
+                url = (
+                    item.get("href")
+                    or item.get("url")
+                )
 
-            url = item.get("href") or item.get("url")
+                if not url:
+                    continue
 
-            if not url:
-                continue
-
-            results.append(
-                {
+                rows.append({
                     "title": item.get(
                         "title",
-                        "Untitled",
+                        "Untitled"
                     ),
+
                     "url": url,
+
                     "domain": domain(url),
+
                     "snippet": item.get(
                         "body",
-                        "",
+                        ""
                     ),
-                }
-            )
-
-        return results
+                })
 
     except Exception as exc:
 
-        # IMPORTANT:
-        # Do not silently hide the real search error.
         print(
-            "WEB SEARCH ERROR:",
-            type(exc).__name__,
-            str(exc),
+            "Web search failed:",
+            exc
         )
 
         return []
 
+    return rows
 
-# ---------------------------------------------------------
+
+# ============================================================
 # CREWAI WEB SEARCH TOOL
-# ---------------------------------------------------------
+# ============================================================
 
 @tool("web_search")
-def web_search(query: str) -> str:
-    """Search the public web for research sources using DDGS."""
+def web_search(
+    query: str
+) -> str:
+    """
+    Search the public web for research sources.
+    """
 
     results = search_web(
         query,
-        max_results=8,
+        max_results=5
     )
 
     if not results:
-        return (
-            "No search results were returned. "
-            "The search provider may be temporarily unavailable."
-        )
+        return "No results found."
 
-    blocks = []
-
-    for i, result in enumerate(
-        results,
-        1,
-    ):
-
-        blocks.append(
-            f"""
+    return "\n\n".join(
+        f"""
 RESULT {i}
 
 Title:
-{result["title"]}
+{r['title']}
 
 URL:
-{result["url"]}
+{r['url']}
 
 Domain:
-{result["domain"]}
+{r['domain']}
 
 Snippet:
-{result["snippet"]}
+{r['snippet']}
 """.strip()
+        for i, r in enumerate(
+            results,
+            1
         )
+    )
 
-    return "\n\n".join(blocks)
 
-
-# ---------------------------------------------------------
-# WEBPAGE READER
-# ---------------------------------------------------------
+# ============================================================
+# READ WEBPAGE
+# ============================================================
 
 @tool("read_webpage")
-def read_webpage(url: str) -> str:
-    """Fetch and extract readable text from a public webpage."""
+def read_webpage(
+    url: str
+) -> str:
+    """
+    Fetch and extract readable text
+    from a public webpage.
+    """
 
     try:
 
         response = requests.get(
             url,
             headers={
-                "User-Agent": UA,
+                "User-Agent": UA
             },
             timeout=15,
         )
@@ -163,12 +177,12 @@ def read_webpage(url: str) -> str:
 
             return clean(
                 extracted,
-                14000,
+                9000
             )
 
         soup = BeautifulSoup(
             response.text,
-            "html.parser",
+            "html.parser"
         )
 
         for tag in soup(
@@ -182,7 +196,7 @@ def read_webpage(url: str) -> str:
 
         return clean(
             soup.get_text(" "),
-            14000,
+            9000
         )
 
     except Exception as exc:
@@ -193,90 +207,59 @@ def read_webpage(url: str) -> str:
         )
 
 
-# ---------------------------------------------------------
-# MULTI-QUERY RESEARCH SEARCH
-# ---------------------------------------------------------
+# ============================================================
+# RESEARCH SEARCHES
+# ============================================================
 
 def perform_searches(
     topic,
     depth,
-    max_sources,
+    max_sources
 ):
 
-    topic = str(topic).strip()
+    max_sources = min(
+        int(max_sources),
+        8
+    )
 
-    try:
-        max_sources = max(
-            int(max_sources),
-            1,
-        )
-    except (
-        TypeError,
-        ValueError,
-    ):
-        max_sources = 8
-
-    # Basic queries
     queries = [
-        f"{topic} research",
-        f"{topic} study",
-        f"{topic} evidence",
-        f"{topic} report",
-        f"{topic} statistics",
+        f'"{topic}" research',
+        f'"{topic}" evidence',
+        f'"{topic}" report',
     ]
 
-    # Deep research
     if depth in (
         "Deep",
-        "Comprehensive",
+        "Comprehensive"
     ):
 
-        queries.extend(
-            [
-                f"{topic} academic research",
-                f"{topic} government report",
-                f"{topic} systematic review",
-            ]
-        )
+        queries.extend([
+            f'"{topic}" academic research',
+            f'"{topic}" systematic review',
+        ])
 
-    # Comprehensive research
     if depth == "Comprehensive":
 
-        queries.extend(
-            [
-                f"{topic} official data",
-                f"{topic} policy report",
-                f"{topic} meta analysis",
-            ]
-        )
+        queries.extend([
+            f'"{topic}" government report',
+            f'"{topic}" official data',
+        ])
 
     seen = set()
     results = []
 
     for query in queries:
 
-        print(
-            f"Searching web for: {query}"
-        )
-
-        search_results = search_web(
+        for result in search_web(
             query,
-            max_results=max_sources,
-        )
+            max_results=4
+        ):
 
-        for result in search_results:
-
-            url = result.get(
-                "url",
-                "",
-            ).strip()
-
-            if not url:
-                continue
-
-            key = url.rstrip(
-                "/"
-            ).lower()
+            key = (
+                result["url"]
+                .rstrip("/")
+                .lower()
+            )
 
             if key in seen:
                 continue
@@ -285,8 +268,6 @@ def perform_searches(
             results.append(result)
 
             if len(results) >= max_sources:
-
                 return results
 
     return results
-
