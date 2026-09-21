@@ -19,71 +19,65 @@ def build_llm():
     """
     Build CrewAI LLM using Groq's OpenAI-compatible API.
 
+    Groq model:
+        openai/gpt-oss-20b
+
     CrewAI provider:
         openai
 
-    Actual Groq model:
-        openai/gpt-oss-120b
-
-    Therefore CrewAI receives:
-        openai/openai/gpt-oss-120b
-
-    CrewAI removes the first `openai/` provider prefix,
-    while Groq receives:
-        openai/gpt-oss-120b
+    Groq endpoint:
+        https://api.groq.com/openai/v1
     """
 
     api_key = get_groq_api_key()
-    groq_model = get_groq_model()
-
-    # --------------------------------------------------------
-    # API KEY VALIDATION
-    # --------------------------------------------------------
+    model_name = get_groq_model()
 
     if not api_key:
         raise ValueError(
             "GROQ_API_KEY is missing. "
-            "Please add GROQ_API_KEY to Streamlit Secrets."
+            "Add it to Streamlit Secrets."
         )
 
-    # --------------------------------------------------------
-    # MODEL VALIDATION
-    # --------------------------------------------------------
-
-    if not groq_model:
+    if not model_name:
         raise ValueError(
             "GROQ_MODEL is missing."
         )
 
-    groq_model = str(groq_model).strip()
+    model_name = str(model_name).strip()
 
     # --------------------------------------------------------
-    # NORMALIZE MODEL NAME
+    # Normalize provider prefixes
     # --------------------------------------------------------
 
-    if groq_model.startswith("groq/"):
-        groq_model = groq_model[len("groq/"):]
+    if model_name.startswith("groq/"):
+        model_name = model_name[len("groq/"):]
 
-    if groq_model == "gpt-oss-120b":
-        groq_model = "openai/gpt-oss-120b"
+    if model_name == "gpt-oss-20b":
+        model_name = "openai/gpt-oss-20b"
 
-    elif not groq_model.startswith("openai/"):
-        groq_model = f"openai/{groq_model}"
+    elif model_name == "gpt-oss-120b":
+        model_name = "openai/gpt-oss-120b"
 
-    # --------------------------------------------------------
-    # CREWAI MODEL
-    # --------------------------------------------------------
-
-    crewai_model = f"openai/{groq_model}"
+    elif not model_name.startswith("openai/"):
+        model_name = f"openai/{model_name}"
 
     # --------------------------------------------------------
-    # DEBUG INFORMATION
+    # CrewAI provider prefix
+    #
+    # CrewAI sees:
+    #
+    # openai/openai/gpt-oss-20b
+    #
+    # First "openai/" = provider
+    # Second "openai/" = Groq model namespace
     # --------------------------------------------------------
+
+    crewai_model = f"openai/{model_name}"
 
     print("=" * 70)
     print("CREWAI + GROQ CONFIGURATION")
     print("=" * 70)
-    print("Configured Groq model:", groq_model)
+    print("Groq model:", model_name)
     print("CrewAI model:", crewai_model)
     print(
         "Base URL:",
@@ -94,10 +88,6 @@ def build_llm():
         bool(api_key)
     )
     print("=" * 70)
-
-    # --------------------------------------------------------
-    # CREATE LLM
-    # --------------------------------------------------------
 
     return LLM(
         model=crewai_model,
@@ -112,9 +102,6 @@ def build_llm():
 # ============================================================
 
 def build_agent():
-    """
-    Create the main research analyst agent.
-    """
 
     return Agent(
         role="Senior Research Analyst",
@@ -126,10 +113,9 @@ def build_agent():
 
         backstory=(
             "You are a rigorous research analyst. "
-            "You prioritize original, authoritative, academic "
-            "and reputable evidence. You compare sources carefully, "
-            "identify uncertainty, and clearly communicate "
-            "conflicting findings."
+            "You prioritize authoritative, academic, primary "
+            "and reputable sources. You compare evidence, "
+            "identify uncertainty and clearly report conflicts."
         ),
 
         llm=build_llm(),
@@ -146,7 +132,7 @@ def build_agent():
 
 
 # ============================================================
-# MAIN RESEARCH FUNCTION
+# MAIN RESEARCH WORKFLOW
 # ============================================================
 
 def run_research(
@@ -156,12 +142,9 @@ def run_research(
     source_count,
     recency,
 ):
-    """
-    Run the complete research workflow.
-    """
 
     # ========================================================
-    # STEP 1 — VALIDATE TOPIC
+    # STEP 1 — VALIDATE INPUT
     # ========================================================
 
     if not topic or not str(topic).strip():
@@ -172,7 +155,7 @@ def run_research(
     topic = str(topic).strip()
 
     # ========================================================
-    # STEP 2 — VALIDATE SOURCE COUNT
+    # STEP 2 — SOURCE COUNT
     # ========================================================
 
     try:
@@ -180,18 +163,28 @@ def run_research(
             int(source_count),
             1
         )
-
     except (TypeError, ValueError):
         source_count = 5
 
     # ========================================================
-    # STEP 3 — DISCOVER SOURCES
+    # IMPORTANT TOKEN CONTROL
+    #
+    # Do not retrieve 15 large webpages unnecessarily.
+    # ========================================================
+
+    max_sources = min(
+        source_count,
+        8
+    )
+
+    # ========================================================
+    # STEP 3 — SEARCH
     # ========================================================
 
     raw = perform_searches(
         topic,
         depth,
-        source_count,
+        max_sources,
     )
 
     if not raw:
@@ -200,7 +193,7 @@ def run_research(
         )
 
     # ========================================================
-    # STEP 4 — RANK SOURCES
+    # STEP 4 — RANK
     # ========================================================
 
     ranked = rank(raw)
@@ -210,12 +203,14 @@ def run_research(
             "Sources were discovered, but none could be ranked."
         )
 
-    selected = ranked[
-        :max(source_count, 5)
-    ]
+    # ========================================================
+    # STEP 5 — SELECT SOURCES
+    # ========================================================
+
+    selected = ranked[:max_sources]
 
     # ========================================================
-    # STEP 5 — READ SOURCE CONTENT
+    # STEP 6 — READ SOURCES
     # ========================================================
 
     usable = []
@@ -229,11 +224,11 @@ def run_research(
 
         try:
             text = read_webpage.run(url)
-
         except Exception as exc:
             print(
-                f"Unable to read source {url}: {exc}"
+                f"Unable to read source: {url}"
             )
+            print(exc)
             continue
 
         if not text:
@@ -244,23 +239,25 @@ def run_research(
         ):
             continue
 
-        source["evidence"] = text
+        # Limit evidence before sending it to LLM
+        source["evidence"] = text[:7000]
 
         usable.append(source)
 
     # ========================================================
-    # STEP 6 — CREATE AGENT
+    # STEP 7 — BUILD AGENT
     # ========================================================
 
     agent = build_agent()
 
     # ========================================================
-    # STEP 7 — CREATE TASK
+    # STEP 8 — BUILD TASK
     # ========================================================
 
     task = Task(
+
         description=f"""
-Research this topic carefully:
+Research the following topic:
 
 {topic}
 
@@ -270,58 +267,51 @@ Research depth:
 Preferred recency:
 {recency}
 
-Target number of sources:
-{source_count}
+Number of sources:
+{len(usable)}
 
-Your job is to produce a reliable research evidence brief.
 
-REQUIREMENTS:
+Your task is to produce a concise evidence brief.
 
-1. Identify the most important facts and findings.
+Requirements:
 
-2. Compare information across multiple sources.
+1. Identify the most important findings.
 
-3. Prefer authoritative, primary, academic and reputable
-   sources whenever possible.
+2. Compare evidence across sources.
 
-4. Clearly distinguish established facts from uncertain
-   or incomplete findings.
+3. Prefer authoritative and primary sources.
 
-5. Mention conflicting evidence when credible sources disagree.
+4. Distinguish facts from uncertainty.
 
-6. Do not invent facts.
+5. Mention credible disagreements.
 
-7. Do not invent statistics.
+6. Never invent facts.
 
-8. Do not invent quotations.
+7. Never invent statistics.
 
-9. Do not fabricate sources.
+8. Never invent quotations.
 
-10. Do not fabricate URLs.
+9. Never invent URLs.
 
-11. Do not claim that you visited a source unless evidence
-    supports that claim.
+10. Do not claim that a source was accessed unless
+    the source evidence supports that claim.
 
-12. Include source URLs whenever possible.
+11. Include source URLs when available.
 
-13. Keep the evidence brief structured and useful.
-
-14. Use clear headings.
-
-15. Make the final research useful for a human reader.
+12. Keep the response concise and evidence-focused.
 """,
 
         expected_output=(
-            "A structured research evidence brief containing "
-            "key findings, supporting evidence, uncertainty, "
-            "conflicting findings where relevant, and source URLs."
+            "A concise structured research evidence brief "
+            "with key findings, evidence, uncertainty, "
+            "source comparisons and URLs."
         ),
 
         agent=agent,
     )
 
     # ========================================================
-    # STEP 8 — CREATE CREW
+    # STEP 9 — CREW
     # ========================================================
 
     crew = Crew(
@@ -332,73 +322,63 @@ REQUIREMENTS:
     )
 
     # ========================================================
-    # STEP 9 — RUN CREWAI
+    # STEP 10 — RUN
     # ========================================================
 
-    agent_result = str(
-        crew.kickoff()
-    )
+    try:
+
+        agent_result = str(
+            crew.kickoff()
+        )
+
+    except Exception as exc:
+
+        error_text = str(exc)
+
+        if (
+            "RateLimitError" in type(exc).__name__
+            or "rate_limit" in error_text.lower()
+            or "429" in error_text
+        ):
+            raise RuntimeError(
+                "Groq rate limit reached. "
+                "Please wait for the limit to reset "
+                "or use a model with available quota."
+            ) from exc
+
+        raise
 
     # ========================================================
-    # STEP 10 — BUILD EVIDENCE PACKAGE
+    # STEP 11 — EVIDENCE PACKAGE
     # ========================================================
 
     evidence_blocks = []
 
     for i, source in enumerate(
         usable,
-        1,
+        1
     ):
-
-        title = source.get(
-            "title",
-            "",
-        )
-
-        url = source.get(
-            "url",
-            "",
-        )
-
-        source_type = source.get(
-            "source_type",
-            "",
-        )
-
-        quality_tier = source.get(
-            "quality_tier",
-            "",
-        )
-
-        evidence = source.get(
-            "evidence",
-            "",
-        )
 
         evidence_blocks.append(
             f"""
 SOURCE [{i}]
 
 Title:
-{title}
+{source.get("title", "")}
 
 URL:
-{url}
+{source.get("url", "")}
 
 Type:
-{source_type}
+{source.get("source_type", "")}
 
 Quality Tier:
-{quality_tier}
+{source.get("quality_tier", "")}
 
 Evidence:
-{evidence[:10000]}
+{source.get("evidence", "")[:7000]}
 """.strip()
         )
-
-    # ========================================================
-    # STEP 11 — COMBINE EVIDENCE
-    # ========================================================
 
     package = "\n\n".join(
         evidence_blocks
@@ -418,7 +398,7 @@ Evidence:
     )
 
     # ========================================================
-    # STEP 12 — GENERATE FINAL REPORT
+    # STEP 12 — FINAL REPORT
     # ========================================================
 
     report = generate_report(
@@ -438,23 +418,24 @@ Evidence:
 
         tier = source.get(
             "quality_tier",
-            "Unknown",
+            "Unknown"
         )
 
         tiers[tier] = (
             tiers.get(tier, 0) + 1
         )
 
-    if tiers:
-        quality_summary = ", ".join(
+    quality_summary = (
+        ", ".join(
             f"{key}: {value}"
             for key, value in tiers.items()
         )
-    else:
-        quality_summary = "—"
+        if tiers
+        else "—"
+    )
 
     # ========================================================
-    # STEP 14 — RETURN RESULT
+    # STEP 14 — RETURN
     # ========================================================
 
     return {
