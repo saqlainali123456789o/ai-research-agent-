@@ -3,10 +3,10 @@ import streamlit as st
 
 
 # ============================================================
-# DEFAULT MODEL
+# DEFAULT GROQ MODEL
 # ============================================================
 
-DEFAULT_MODEL = "openai/gpt-oss-120b"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
 
 
 # ============================================================
@@ -15,8 +15,8 @@ DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 def get_secret(name: str, default=None):
     """
-    Read a value from Streamlit Secrets first,
-    then environment variables.
+    Read a value from Streamlit Secrets first.
+    Fall back to environment variables.
     """
 
     try:
@@ -49,10 +49,13 @@ def get_groq_api_key():
 
 def get_groq_model():
     """
-    Always return the actual Groq model ID.
+    Return a normalized Groq model ID.
 
-    Expected:
-        openai/gpt-oss-120b
+    Accepted examples:
+
+        openai/gpt-oss-20b
+        gpt-oss-20b
+        groq/openai/gpt-oss-20b
     """
 
     model = get_secret(
@@ -65,30 +68,26 @@ def get_groq_model():
 
     model = str(model).strip()
 
-    # Remove accidental groq/ prefix
+    # Remove accidental Groq provider prefix
     if model.startswith("groq/"):
         model = model[len("groq/"):]
 
-    model = model.strip()
+    # GPT-OSS models need the OpenAI model namespace
+    if model == "gpt-oss-20b":
+        return "openai/gpt-oss-20b"
 
-    # Bare model name
     if model == "gpt-oss-120b":
         return "openai/gpt-oss-120b"
 
-    # Correct model
-    if model == "openai/gpt-oss-120b":
-        return "openai/gpt-oss-120b"
-
-    # Preserve other openai-prefixed models
+    # Already correctly formatted
     if model.startswith("openai/"):
         return model
 
-    # Fallback
-    return f"openai/{model}"
+    return model
 
 
 # ============================================================
-# VALIDATE CONFIGURATION
+# CONFIGURATION VALIDATION
 # ============================================================
 
 def validate_configuration():
