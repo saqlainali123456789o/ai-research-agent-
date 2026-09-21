@@ -19,15 +19,102 @@ def build_llm():
     """
     Build CrewAI LLM using Groq's OpenAI-compatible API.
 
-    Groq endpoint:
-        https://api.groq.com/openai/v1
+    CrewAI uses the first `openai/` as its provider prefix.
 
-    Current Groq model:
+    Therefore:
+
+        CrewAI model:
+        openai/openai/gpt-oss-120b
+
+    becomes:
+
+        Actual Groq model:
         openai/gpt-oss-120b
     """
 
     api_key = get_groq_api_key()
-    model_name = get_groq_model()
+    groq_model = get_groq_model()
+
+    # --------------------------------------------------------
+    # API KEY CHECK
+    # --------------------------------------------------------
+
+    if not api_key:
+        raise ValueError(
+            "GROQ_API_KEY is missing. "
+            "Please add GROQ_API_KEY to Streamlit Secrets."
+        )
+
+    # --------------------------------------------------------
+    # MODEL CHECK
+    # --------------------------------------------------------
+
+    if not groq_model:
+        raise ValueError(
+            "GROQ_MODEL is missing."
+        )
+
+    groq_model = str(groq_model).strip()
+
+    # --------------------------------------------------------
+    # Normalize model
+    # --------------------------------------------------------
+
+    if groq_model.startswith("groq/"):
+        groq_model = groq_model[len("groq/"):]
+
+    if groq_model == "gpt-oss-120b":
+        groq_model = "openai/gpt-oss-120b"
+
+    elif not groq_model.startswith("openai/"):
+        groq_model = f"openai/{groq_model}"
+
+    # --------------------------------------------------------
+    # IMPORTANT
+    # --------------------------------------------------------
+    #
+    # CrewAI consumes the FIRST openai/ as provider prefix.
+    #
+    # Therefore:
+    #
+    # openai/openai/gpt-oss-120b
+    #
+    # is intentionally used here.
+    #
+    # CrewAI provider:
+    #     openai
+    #
+    # Actual Groq model:
+    #     openai/gpt-oss-120b
+    # --------------------------------------------------------
+
+    crewai_model = f"openai/{groq_model}"
+
+    print("=" * 70)
+    print("CREWAI + GROQ CONFIGURATION")
+    print("=" * 70)
+    print("Configured Groq model:", groq_model)
+    print("CrewAI model:", crewai_model)
+    print(
+        "Base URL:",
+        "https://api.groq.com/openai/v1"
+    )
+    print(
+        "API key loaded:",
+        bool(api_key)
+    )
+    print("=" * 70)
+
+    # --------------------------------------------------------
+    # CREATE LLM
+    # --------------------------------------------------------
+
+    return LLM(
+        model=crewai_model,
+        api_key=api_key,
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.1,
+    )
 
     # --------------------------------------------------------
     # Validate API key
