@@ -75,37 +75,42 @@ def build_llm():
 # RESEARCH AGENT
 # ============================================================
 
-def build_agent():
-    """
-    Create the main research analyst agent.
-    """
+def build_llm():
+    api_key = get_groq_api_key()
+    model_name = get_groq_model()
 
-    return Agent(
-        role="Senior Research Analyst",
+    if not api_key:
+        raise ValueError("GROQ_API_KEY is missing.")
 
-        goal=(
-            "Find, evaluate and synthesize reliable web evidence "
-            "without fabricating facts."
-        ),
+    if not model_name:
+        raise ValueError("GROQ_MODEL is missing.")
 
-        backstory=(
-            "You are a rigorous research analyst. You prioritize "
-            "original, authoritative and academic evidence. "
-            "You compare sources carefully, identify uncertainty, "
-            "and clearly communicate conflicting findings."
-        ),
+    model_name = str(model_name).strip()
 
-        llm=build_llm(),
+    # Remove any provider prefix
+    if model_name.startswith("groq/"):
+        model_name = model_name[len("groq/"):]
 
-        tools=[
-            web_search,
-            read_webpage,
-        ],
+    if model_name.startswith("openai/"):
+        model_name = model_name[len("openai/"):]
 
-        allow_delegation=False,
-        verbose=False,
+    # IMPORTANT: CrewAI should receive openai/<model>
+    final_model = f"openai/{model_name}"
+
+    # Temporary diagnostic
+    print("========== LLM CONFIG ==========")
+    print("Raw model:", repr(get_groq_model()))
+    print("Clean model:", repr(model_name))
+    print("Final CrewAI model:", repr(final_model))
+    print("Base URL:", "https://api.groq.com/openai/v1")
+    print("================================")
+
+    return LLM(
+        model=final_model,
+        api_key=api_key,
+        base_url="https://api.groq.com/openai/v1",
+        temperature=0.1,
     )
-
 
 # ============================================================
 # MAIN RESEARCH WORKFLOW
