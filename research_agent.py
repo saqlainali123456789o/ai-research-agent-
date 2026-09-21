@@ -19,16 +19,17 @@ def build_llm():
     """
     Build CrewAI LLM using Groq's OpenAI-compatible API.
 
-    CrewAI uses the first `openai/` as its provider prefix.
+    CrewAI provider:
+        openai
 
-    Therefore:
+    Actual Groq model:
+        openai/gpt-oss-120b
 
-        CrewAI model:
+    Therefore CrewAI receives:
         openai/openai/gpt-oss-120b
 
-    becomes:
-
-        Actual Groq model:
+    CrewAI removes the first `openai/` provider prefix,
+    while Groq receives:
         openai/gpt-oss-120b
     """
 
@@ -36,7 +37,7 @@ def build_llm():
     groq_model = get_groq_model()
 
     # --------------------------------------------------------
-    # API KEY CHECK
+    # API KEY VALIDATION
     # --------------------------------------------------------
 
     if not api_key:
@@ -46,7 +47,7 @@ def build_llm():
         )
 
     # --------------------------------------------------------
-    # MODEL CHECK
+    # MODEL VALIDATION
     # --------------------------------------------------------
 
     if not groq_model:
@@ -57,7 +58,7 @@ def build_llm():
     groq_model = str(groq_model).strip()
 
     # --------------------------------------------------------
-    # Normalize model
+    # NORMALIZE MODEL NAME
     # --------------------------------------------------------
 
     if groq_model.startswith("groq/"):
@@ -70,25 +71,14 @@ def build_llm():
         groq_model = f"openai/{groq_model}"
 
     # --------------------------------------------------------
-    # IMPORTANT
-    # --------------------------------------------------------
-    #
-    # CrewAI consumes the FIRST openai/ as provider prefix.
-    #
-    # Therefore:
-    #
-    # openai/openai/gpt-oss-120b
-    #
-    # is intentionally used here.
-    #
-    # CrewAI provider:
-    #     openai
-    #
-    # Actual Groq model:
-    #     openai/gpt-oss-120b
+    # CREWAI MODEL
     # --------------------------------------------------------
 
     crewai_model = f"openai/{groq_model}"
+
+    # --------------------------------------------------------
+    # DEBUG INFORMATION
+    # --------------------------------------------------------
 
     print("=" * 70)
     print("CREWAI + GROQ CONFIGURATION")
@@ -111,77 +101,6 @@ def build_llm():
 
     return LLM(
         model=crewai_model,
-        api_key=api_key,
-        base_url="https://api.groq.com/openai/v1",
-        temperature=0.1,
-    )
-
-    # --------------------------------------------------------
-    # Validate API key
-    # --------------------------------------------------------
-
-    if not api_key:
-        raise ValueError(
-            "GROQ_API_KEY is missing. "
-            "Please add GROQ_API_KEY to Streamlit Secrets."
-        )
-
-    # --------------------------------------------------------
-    # Validate model
-    # --------------------------------------------------------
-
-    if not model_name:
-        raise ValueError(
-            "GROQ_MODEL is missing. "
-            "Please set GROQ_MODEL to openai/gpt-oss-120b."
-        )
-
-    model_name = str(model_name).strip()
-
-    # --------------------------------------------------------
-    # Normalize model ID
-    # --------------------------------------------------------
-
-    if model_name.startswith("groq/"):
-        model_name = model_name[len("groq/"):]
-
-    model_name = model_name.strip()
-
-    # Bare GPT-OSS 120B name
-    if model_name == "gpt-oss-120b":
-        final_model = "openai/gpt-oss-120b"
-
-    # Correct model ID
-    elif model_name == "openai/gpt-oss-120b":
-        final_model = "openai/gpt-oss-120b"
-
-    # Other OpenAI-compatible model
-    elif model_name.startswith("openai/"):
-        final_model = model_name
-
-    # Any other bare model
-    else:
-        final_model = f"openai/{model_name}"
-
-    # --------------------------------------------------------
-    # Diagnostic information
-    # --------------------------------------------------------
-
-    print("=" * 60)
-    print("CREWAI LLM CONFIGURATION")
-    print("=" * 60)
-    print("Model:", final_model)
-    print("Provider: OpenAI-compatible")
-    print("Base URL:", "https://api.groq.com/openai/v1")
-    print("API key loaded:", bool(api_key))
-    print("=" * 60)
-
-    # --------------------------------------------------------
-    # Create CrewAI LLM
-    # --------------------------------------------------------
-
-    return LLM(
-        model=final_model,
         api_key=api_key,
         base_url="https://api.groq.com/openai/v1",
         temperature=0.1,
@@ -239,17 +158,6 @@ def run_research(
 ):
     """
     Run the complete research workflow.
-
-    Workflow:
-
-    1. Validate topic
-    2. Search for sources
-    3. Rank sources
-    4. Read source pages
-    5. Build CrewAI research agent
-    6. Generate research brief
-    7. Combine evidence
-    8. Generate final report
     """
 
     # ========================================================
@@ -283,7 +191,7 @@ def run_research(
     raw = perform_searches(
         topic,
         depth,
-        source_count
+        source_count,
     )
 
     if not raw:
@@ -302,7 +210,6 @@ def run_research(
             "Sources were discovered, but none could be ranked."
         )
 
-    # Use at least the requested number when available
     selected = ranked[
         :max(source_count, 5)
     ]
@@ -321,15 +228,12 @@ def run_research(
             continue
 
         try:
-
             text = read_webpage.run(url)
 
         except Exception as exc:
-
             print(
                 f"Unable to read source {url}: {exc}"
             )
-
             continue
 
         if not text:
@@ -345,17 +249,16 @@ def run_research(
         usable.append(source)
 
     # ========================================================
-    # STEP 6 — CREATE RESEARCH AGENT
+    # STEP 6 — CREATE AGENT
     # ========================================================
 
     agent = build_agent()
 
     # ========================================================
-    # STEP 7 — CREATE RESEARCH TASK
+    # STEP 7 — CREATE TASK
     # ========================================================
 
     task = Task(
-
         description=f"""
 Research this topic carefully:
 
@@ -370,12 +273,9 @@ Preferred recency:
 Target number of sources:
 {source_count}
 
-
 Your job is to produce a reliable research evidence brief.
 
-
-RESEARCH REQUIREMENTS
-=====================
+REQUIREMENTS:
 
 1. Identify the most important facts and findings.
 
@@ -425,17 +325,9 @@ RESEARCH REQUIREMENTS
     # ========================================================
 
     crew = Crew(
-
-        agents=[
-            agent
-        ],
-
-        tasks=[
-            task
-        ],
-
+        agents=[agent],
+        tasks=[task],
         process=Process.sequential,
-
         verbose=False,
     )
 
@@ -455,36 +347,35 @@ RESEARCH REQUIREMENTS
 
     for i, source in enumerate(
         usable,
-        1
+        1,
     ):
 
         title = source.get(
             "title",
-            ""
+            "",
         )
 
         url = source.get(
             "url",
-            ""
+            "",
         )
 
         source_type = source.get(
             "source_type",
-            ""
+            "",
         )
 
         quality_tier = source.get(
             "quality_tier",
-            ""
+            "",
         )
 
         evidence = source.get(
             "evidence",
-            ""
+            "",
         )
 
         evidence_blocks.append(
-
             f"""
 SOURCE [{i}]
 
@@ -503,11 +394,10 @@ Quality Tier:
 Evidence:
 {evidence[:10000]}
 """.strip()
-
         )
 
     # ========================================================
-    # STEP 11 — JOIN EVIDENCE
+    # STEP 11 — COMBINE EVIDENCE
     # ========================================================
 
     package = "\n\n".join(
@@ -515,20 +405,16 @@ Evidence:
     )
 
     if not package:
-
         package = (
             "No directly readable source evidence "
             "was available."
         )
 
-    # Add CrewAI research result
     package += (
-
         "\n\n"
         "CREWAI RESEARCH BRIEF\n"
         "======================\n"
         f"{agent_result}"
-
     )
 
     # ========================================================
@@ -543,7 +429,7 @@ Evidence:
     )
 
     # ========================================================
-    # STEP 13 — SOURCE QUALITY SUMMARY
+    # STEP 13 — QUALITY SUMMARY
     # ========================================================
 
     tiers = {}
@@ -552,7 +438,7 @@ Evidence:
 
         tier = source.get(
             "quality_tier",
-            "Unknown"
+            "Unknown",
         )
 
         tiers[tier] = (
@@ -560,36 +446,26 @@ Evidence:
         )
 
     if tiers:
-
         quality_summary = ", ".join(
             f"{key}: {value}"
             for key, value in tiers.items()
         )
-
     else:
-
         quality_summary = "—"
 
     # ========================================================
-    # STEP 14 — RETURN FINAL RESULT
+    # STEP 14 — RETURN RESULT
     # ========================================================
 
     return {
-
         "report": report,
 
         "sources": usable,
 
         "metadata": {
-
             "results_discovered": len(raw),
-
             "sources_used": len(usable),
-
             "quality_summary": quality_summary,
-
             "research_depth": depth,
-
         },
-
     }
