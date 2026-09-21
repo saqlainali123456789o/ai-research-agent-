@@ -6,6 +6,7 @@ from research_tools import perform_searches, read_webpage, web_search
 from source_quality import rank
 from report_generator import generate_report
 
+
 def build_llm():
     return LLM(
         model=f"openai/{get_groq_model()}",
@@ -13,6 +14,7 @@ def build_llm():
         base_url="https://api.groq.com/openai/v1",
         temperature=0.1,
     )
+
 
 def build_agent():
     return Agent(
@@ -28,6 +30,7 @@ def build_agent():
         verbose=False,
     )
 
+
 def run_research(topic, depth, report_type, source_count, recency):
     raw = perform_searches(topic, depth, source_count)
     ranked = rank(raw)
@@ -38,11 +41,13 @@ def run_research(topic, depth, report_type, source_count, recency):
 
     for source in selected:
         text = read_webpage.run(source["url"])
+
         if text and not text.startswith("Unable to read webpage:"):
             source["evidence"] = text
             usable.append(source)
 
     agent = build_agent()
+
     task = Task(
         description=f"""
 Research this topic: {topic}
@@ -55,7 +60,9 @@ Use the available web tools to identify important evidence, compare sources,
 and flag uncertainty or conflicting findings. Do not invent evidence.
 Return a concise research evidence brief with source URLs.
 """,
-        expected_output="A structured evidence brief with claims and supporting sources.",
+        expected_output=(
+            "A structured evidence brief with claims and supporting sources."
+        ),
         agent=agent,
     )
 
@@ -65,29 +72,42 @@ Return a concise research evidence brief with source URLs.
         process=Process.sequential,
         verbose=False,
     )
+
     agent_result = str(crew.kickoff())
 
     evidence_blocks = []
+
     for i, s in enumerate(usable, 1):
         evidence_blocks.append(
             f"""SOURCE [{i}]
-Title: {s.get('title','')}
-URL: {s.get('url','')}
-Type: {s.get('source_type','')}
-Tier: {s.get('quality_tier','')}
+Title: {s.get('title', '')}
+URL: {s.get('url', '')}
+Type: {s.get('source_type', '')}
+Tier: {s.get('quality_tier', '')}
 Evidence:
-{s.get('evidence','')[:10000]}"""
+{s.get('evidence', '')[:10000]}"""
         )
 
     package = "\n\n".join(evidence_blocks)
     package += "\n\nCREWAI RESEARCH BRIEF\n" + agent_result
 
-    report = generate_report(topic, package, report_type, depth)
+    report = generate_report(
+        topic,
+        package,
+        report_type,
+        depth,
+    )
 
     tiers = {}
+
     for s in usable:
-        tiers[s["quality_tier"]] = tiers.get(s["quality_tier"],0) + 1
-    quality_summary = ", ".join(f"{k}: {v}" for k,v in tiers.items()) or "—"
+        tier = s["quality_tier"]
+        tiers[tier] = tiers.get(tier, 0) + 1
+
+    quality_summary = (
+        ", ".join(f"{k}: {v}" for k, v in tiers.items())
+        or "—"
+    )
 
     return {
         "report": report,
@@ -97,5 +117,5 @@ Evidence:
             "sources_used": len(usable),
             "quality_summary": quality_summary,
             "research_depth": depth,
-        }
+        },
     }
