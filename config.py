@@ -3,23 +3,22 @@ import streamlit as st
 
 
 # ============================================================
-# DEFAULT CONFIGURATION
+# DEFAULT MODEL
 # ============================================================
 
 DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 
 # ============================================================
-# SECRET / ENVIRONMENT VARIABLE HELPER
+# SECRET HELPER
 # ============================================================
 
 def get_secret(name: str, default=None):
     """
-    Read configuration from Streamlit Secrets first,
-    then fall back to environment variables.
+    Read a value from Streamlit Secrets first,
+    then environment variables.
     """
 
-    # Try Streamlit Cloud Secrets
     try:
         value = st.secrets.get(name)
     except Exception:
@@ -28,7 +27,6 @@ def get_secret(name: str, default=None):
     if value:
         return str(value).strip()
 
-    # Fall back to environment variables
     value = os.getenv(name)
 
     if value:
@@ -42,10 +40,6 @@ def get_secret(name: str, default=None):
 # ============================================================
 
 def get_groq_api_key():
-    """
-    Return Groq API key.
-    """
-
     return get_secret("GROQ_API_KEY")
 
 
@@ -55,13 +49,10 @@ def get_groq_api_key():
 
 def get_groq_model():
     """
-    Return the correct Groq model ID.
+    Always return the actual Groq model ID.
 
-    The application internally expects the exact Groq model ID:
-
+    Expected:
         openai/gpt-oss-120b
-
-    This function also cleans common incorrect formats.
     """
 
     model = get_secret(
@@ -80,32 +71,27 @@ def get_groq_model():
 
     model = model.strip()
 
-    # If user entered the bare model name
+    # Bare model name
     if model == "gpt-oss-120b":
         return "openai/gpt-oss-120b"
 
-    # If already correct
+    # Correct model
     if model == "openai/gpt-oss-120b":
         return "openai/gpt-oss-120b"
 
-    # If another openai-prefixed model is supplied,
-    # preserve it.
+    # Preserve other openai-prefixed models
     if model.startswith("openai/"):
         return model
 
-    # For other bare model IDs, use OpenAI-compatible
-    # provider format.
+    # Fallback
     return f"openai/{model}"
 
 
 # ============================================================
-# CONFIGURATION VALIDATION
+# VALIDATE CONFIGURATION
 # ============================================================
 
 def validate_configuration():
-    """
-    Validate required application configuration.
-    """
 
     api_key = get_groq_api_key()
     model = get_groq_model()
