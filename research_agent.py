@@ -8,8 +8,9 @@ from report_generator import generate_report
 
 def build_llm():
     return LLM(
-        model=f"groq/{get_groq_model()}",
+        model=f"openai/{get_groq_model()}",
         api_key=get_groq_api_key(),
+        base_url="https://api.groq.com/openai/v1",
         temperature=0.1,
     )
 
