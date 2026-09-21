@@ -1,6 +1,10 @@
+```python
 import streamlit as st
+from openai import OpenAI
+
 from config import validate_configuration, get_groq_model
 from research_agent import run_research
+
 
 st.set_page_config(
     page_title="AI Research Agent",
@@ -9,19 +13,60 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+
 st.markdown("""
 <style>
-.block-container {max-width: 1200px; padding-top: 2rem; padding-bottom: 3rem;}
-.hero {padding: 1.4rem 1.6rem; border: 1px solid rgba(128,128,128,.22);
-       border-radius: 18px; background: linear-gradient(135deg,#f8fafc,#eef2ff); margin-bottom: 1.2rem;}
-.hero h1 {margin:0; font-size:2.25rem;}
-.hero p {margin:.45rem 0 0; color:#64748b; font-size:1rem;}
-.badge {display:inline-block; margin-top:.8rem; padding:.3rem .7rem; border-radius:999px;
-        background:#dbeafe; color:#1d4ed8; font-size:.78rem; font-weight:600;}
-.card {padding:1rem; border:1px solid rgba(128,128,128,.22); border-radius:14px; height:100%;}
-.footer {color:#64748b; font-size:.78rem; margin-top:2rem;}
+.block-container {
+    max-width: 1200px;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
+}
+
+.hero {
+    padding: 1.4rem 1.6rem;
+    border: 1px solid rgba(128,128,128,.22);
+    border-radius: 18px;
+    background: linear-gradient(135deg,#f8fafc,#eef2ff);
+    margin-bottom: 1.2rem;
+}
+
+.hero h1 {
+    margin: 0;
+    font-size: 2.25rem;
+}
+
+.hero p {
+    margin: .45rem 0 0;
+    color: #64748b;
+    font-size: 1rem;
+}
+
+.badge {
+    display: inline-block;
+    margin-top: .8rem;
+    padding: .3rem .7rem;
+    border-radius: 999px;
+    background: #dbeafe;
+    color: #1d4ed8;
+    font-size: .78rem;
+    font-weight: 600;
+}
+
+.card {
+    padding: 1rem;
+    border: 1px solid rgba(128,128,128,.22);
+    border-radius: 14px;
+    height: 100%;
+}
+
+.footer {
+    color: #64748b;
+    font-size: .78rem;
+    margin-top: 2rem;
+}
 </style>
 """, unsafe_allow_html=True)
+
 
 st.markdown("""
 <div class="hero">
@@ -31,79 +76,312 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+
+# ---------------------------------------------------------
+# CONFIGURATION CHECK
+# ---------------------------------------------------------
+
 error = validate_configuration()
+
 if error:
     st.error(error)
-    st.info("Add GROQ_API_KEY and GROQ_MODEL in Streamlit Cloud → App settings → Secrets.")
+    st.info(
+        "Add GROQ_API_KEY and GROQ_MODEL in "
+        "Streamlit Cloud → App settings → Secrets."
+    )
     st.stop()
 
+
+# ---------------------------------------------------------
+# SIDEBAR
+# ---------------------------------------------------------
+
 with st.sidebar:
+
     st.header("Research Controls")
-    depth = st.selectbox("Research depth", ["Standard", "Deep", "Comprehensive"], index=1)
+
+    depth = st.selectbox(
+        "Research depth",
+        ["Standard", "Deep", "Comprehensive"],
+        index=1,
+    )
+
     report_type = st.selectbox(
         "Report format",
-        ["General Research Report", "Academic Research Report",
-         "Business Research Report", "Market Research Report",
-         "Technology Research Report"]
+        [
+            "General Research Report",
+            "Academic Research Report",
+            "Business Research Report",
+            "Market Research Report",
+            "Technology Research Report",
+        ],
     )
-    sources = st.slider("Target sources", 5, 15, 8)
+
+    sources = st.slider(
+        "Target sources",
+        5,
+        15,
+        8,
+    )
+
     recency = st.selectbox(
         "Evidence recency",
-        ["Any available date", "Last 5 years", "Last 3 years", "Last 12 months"]
+        [
+            "Any available date",
+            "Last 5 years",
+            "Last 3 years",
+            "Last 12 months",
+        ],
     )
+
     st.divider()
-    st.caption(f"LLM: {get_groq_model()}")
-    st.caption("API credentials are read only from Streamlit Secrets.")
+
+    st.caption(
+        f"LLM: {get_groq_model()}"
+    )
+
+    st.caption(
+        "API credentials are read only from Streamlit Secrets."
+    )
+
+    # -----------------------------------------------------
+    # TEMPORARY GROQ CONNECTION TEST
+    # -----------------------------------------------------
+
+    st.divider()
+
+    st.subheader("🔧 Diagnostics")
+
+    if st.button(
+        "Test Groq Connection",
+        use_container_width=True,
+    ):
+
+        api_key = st.secrets.get("GROQ_API_KEY")
+
+        if not api_key:
+
+            st.error(
+                "GROQ_API_KEY is missing from Streamlit Secrets."
+            )
+
+        else:
+
+            try:
+
+                client = OpenAI(
+                    api_key=api_key,
+                    base_url="https://api.groq.com/openai/v1",
+                )
+
+                with st.spinner(
+                    "Testing Groq API..."
+                ):
+
+                    response = client.chat.completions.create(
+                        model="openai/gpt-oss-120b",
+                        messages=[
+                            {
+                                "role": "user",
+                                "content": (
+                                    "Say hello in one short sentence."
+                                ),
+                            }
+                        ],
+                    )
+
+                st.success(
+                    "✅ Groq connection successful!"
+                )
+
+                st.write(
+                    "Model response:"
+                )
+
+                st.code(
+                    response.choices[0].message.content
+                )
+
+                st.info(
+                    "This confirms that the Groq API, "
+                    "API key and openai/gpt-oss-120b model "
+                    "are working independently of CrewAI."
+                )
+
+            except Exception as exc:
+
+                st.error(
+                    "❌ Direct Groq connection failed."
+                )
+
+                st.code(
+                    str(exc)
+                )
+
+
+# ---------------------------------------------------------
+# RESEARCH INPUT
+# ---------------------------------------------------------
 
 st.subheader("Research topic")
+
 topic = st.text_area(
     "Enter a focused research question or topic",
-    placeholder="Example: How is artificial intelligence affecting productivity in small businesses?",
+    placeholder=(
+        "Example: How is artificial intelligence "
+        "affecting productivity in small businesses?"
+    ),
     height=120,
     label_visibility="collapsed",
 )
 
-if st.button("🔬 Start Research", type="primary", use_container_width=True):
+
+# ---------------------------------------------------------
+# START RESEARCH
+# ---------------------------------------------------------
+
+if st.button(
+    "🔬 Start Research",
+    type="primary",
+    use_container_width=True,
+):
+
     if len(topic.strip()) < 10:
-        st.warning("Please provide a more specific research topic.")
+
+        st.warning(
+            "Please provide a more specific research topic."
+        )
+
         st.stop()
 
-    with st.status("Running research workflow…", expanded=True) as status:
+    with st.status(
+        "Running research workflow…",
+        expanded=True,
+    ) as status:
+
         try:
-            st.write("Planning research questions…")
-            result = run_research(topic.strip(), depth, report_type, sources, recency)
-            status.update(label="Research completed", state="complete", expanded=False)
+
+            st.write(
+                "Planning research questions…"
+            )
+
+            result = run_research(
+                topic.strip(),
+                depth,
+                report_type,
+                sources,
+                recency,
+            )
+
+            status.update(
+                label="Research completed",
+                state="complete",
+                expanded=False,
+            )
+
             st.session_state["result"] = result
+
         except Exception as exc:
-            status.update(label="Research failed", state="error", expanded=True)
-            st.error("The research workflow could not be completed.")
+
+            status.update(
+                label="Research failed",
+                state="error",
+                expanded=True,
+            )
+
+            st.error(
+                "The research workflow could not be completed."
+            )
+
             st.exception(exc)
 
+
+# ---------------------------------------------------------
+# RESULTS
+# ---------------------------------------------------------
+
 result = st.session_state.get("result")
+
+
 if result:
+
     st.divider()
+
     meta = result["metadata"]
-    c1,c2,c3,c4 = st.columns(4)
-    c1.metric("Results discovered", meta["results_discovered"])
-    c2.metric("Sources used", meta["sources_used"])
-    c3.metric("Source quality", meta["quality_summary"])
-    c4.metric("Depth", meta["research_depth"])
+
+    c1, c2, c3, c4 = st.columns(4)
+
+    c1.metric(
+        "Results discovered",
+        meta["results_discovered"],
+    )
+
+    c2.metric(
+        "Sources used",
+        meta["sources_used"],
+    )
+
+    c3.metric(
+        "Source quality",
+        meta["quality_summary"],
+    )
+
+    c4.metric(
+        "Depth",
+        meta["research_depth"],
+    )
 
     st.divider()
-    st.markdown(result["report"])
+
+    st.markdown(
+        result["report"]
+    )
 
     st.divider()
-    st.subheader("Research sources")
-    for i, src in enumerate(result["sources"], 1):
-        with st.expander(f"{i}. {src.get('title','Untitled')}"):
-            st.write(f"**Source type:** {src.get('source_type','Unknown')}")
-            st.write(f"**Quality tier:** {src.get('quality_tier','Unknown')}")
+
+    st.subheader(
+        "Research sources"
+    )
+
+    for i, src in enumerate(
+        result["sources"],
+        1,
+    ):
+
+        with st.expander(
+            f"{i}. {src.get('title', 'Untitled')}"
+        ):
+
+            st.write(
+                f"**Source type:** "
+                f"{src.get('source_type', 'Unknown')}"
+            )
+
+            st.write(
+                f"**Quality tier:** "
+                f"{src.get('quality_tier', 'Unknown')}"
+            )
+
             if src.get("published_date"):
-                st.write(f"**Published:** {src['published_date']}")
-            st.markdown(f"**URL:** {src['url']}")
+
+                st.write(
+                    f"**Published:** "
+                    f"{src['published_date']}"
+                )
+
+            st.markdown(
+                f"**URL:** {src['url']}"
+            )
+
             if src.get("evidence"):
-                st.write("**Retrieved evidence:**")
-                st.write(src["evidence"][:3000])
+
+                st.write(
+                    "**Retrieved evidence:**"
+                )
+
+                st.write(
+                    src["evidence"][:3000]
+                )
 
     st.download_button(
         "⬇️ Download report as Markdown",
@@ -113,7 +391,17 @@ if result:
         use_container_width=True,
     )
 
+
+# ---------------------------------------------------------
+# FOOTER
+# ---------------------------------------------------------
+
 st.markdown(
-    '<div class="footer">AI-generated research should be checked against original sources before high-stakes academic, legal, medical, financial or regulatory use.</div>',
+    '<div class="footer">'
+    'AI-generated research should be checked against '
+    'original sources before high-stakes academic, legal, '
+    'medical, financial or regulatory use.'
+    '</div>',
     unsafe_allow_html=True,
 )
+```
