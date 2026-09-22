@@ -8,22 +8,29 @@ from ddgs import DDGS
 from crewai.tools import tool
 
 
-UA = "Mozilla/5.0 (compatible; AIResearchAgent/1.0)"
+USER_AGENT = (
+    "Mozilla/5.0 "
+    "(compatible; AIResearchAgent/1.0)"
+)
 
 
 # ============================================================
 # DOMAIN
 # ============================================================
 
-def domain(url):
+def get_domain(url):
+
     try:
+
         return (
             urlparse(url)
             .netloc
             .lower()
             .removeprefix("www.")
         )
+
     except Exception:
+
         return ""
 
 
@@ -31,7 +38,7 @@ def domain(url):
 # CLEAN TEXT
 # ============================================================
 
-def clean(text, limit=9000):
+def clean_text(text, limit=7000):
 
     text = re.sub(
         r"\s+",
@@ -43,7 +50,7 @@ def clean(text, limit=9000):
 
 
 # ============================================================
-# WEB SEARCH
+# DUCKDUCKGO SEARCH
 # ============================================================
 
 def search_web(
@@ -51,16 +58,23 @@ def search_web(
     max_results=5
 ):
 
-    rows = []
+    results = []
 
     try:
 
-        with DDGS() as ddgs:
+        with DDGS(
+            timeout=10
+        ) as ddgs:
 
-            for item in ddgs.text(
-                query,
-                max_results=max_results
-            ):
+            items = ddgs.text(
+                query=query,
+                region="us-en",
+                safesearch="moderate",
+                max_results=max_results,
+                backend="auto",
+            )
+
+            for item in items:
 
                 url = (
                     item.get("href")
@@ -70,44 +84,48 @@ def search_web(
                 if not url:
                     continue
 
-                rows.append({
-                    "title": item.get(
-                        "title",
-                        "Untitled"
-                    ),
+                results.append(
+                    {
+                        "title": item.get(
+                            "title",
+                            "Untitled"
+                        ),
 
-                    "url": url,
+                        "url": url,
 
-                    "domain": domain(url),
+                        "domain": get_domain(
+                            url
+                        ),
 
-                    "snippet": item.get(
-                        "body",
-                        ""
-                    ),
-                })
+                        "snippet": item.get(
+                            "body",
+                            ""
+                        ),
+                    }
+                )
 
     except Exception as exc:
 
         print(
-            "Web search failed:",
-            exc
+            "DDGS search error:",
+            type(exc).__name__,
+            str(exc)
         )
 
-        return []
-
-    return rows
+    return results
 
 
 # ============================================================
-# CREWAI WEB SEARCH TOOL
+# CREWAI SEARCH TOOL
+#
+# This remains available to CrewAI, but our main workflow
+# performs the search before the LLM call.
 # ============================================================
 
 @tool("web_search")
-def web_search(
-    query: str
-) -> str:
+def web_search(query: str) -> str:
     """
-    Search the public web for research sources.
+    Search the public web using DuckDuckGo.
     """
 
     results = search_web(
@@ -116,42 +134,47 @@ def web_search(
     )
 
     if not results:
-        return "No results found."
 
-    return "\n\n".join(
-        f"""
+        return (
+            "No web results were returned."
+        )
+
+    output = []
+
+    for i, result in enumerate(
+        results,
+        1
+    ):
+
+        output.append(
+            f"""
 RESULT {i}
 
 Title:
-{r['title']}
+{result["title"]}
 
 URL:
-{r['url']}
+{result["url"]}
 
 Domain:
-{r['domain']}
+{result["domain"]}
 
 Snippet:
-{r['snippet']}
+{result["snippet"]}
 """.strip()
-        for i, r in enumerate(
-            results,
-            1
         )
-    )
+
+    return "\n\n".join(output)
 
 
 # ============================================================
-# READ WEBPAGE
+# WEBPAGE EXTRACTION
 # ============================================================
 
 @tool("read_webpage")
-def read_webpage(
-    url: str
-) -> str:
+def read_webpage(url: str) -> str:
     """
-    Fetch and extract readable text
-    from a public webpage.
+    Fetch and extract readable webpage text.
     """
 
     try:
@@ -159,7 +182,7 @@ def read_webpage(
         response = requests.get(
             url,
             headers={
-                "User-Agent": UA
+                "User-Agent": USER_AGENT
             },
             timeout=15,
         )
@@ -175,9 +198,9 @@ def read_webpage(
 
         if extracted:
 
-            return clean(
+            return clean_text(
                 extracted,
-                9000
+                7000
             )
 
         soup = BeautifulSoup(
@@ -190,13 +213,15 @@ def read_webpage(
                 "script",
                 "style",
                 "noscript",
+                "svg",
             ]
         ):
+
             tag.decompose()
 
-        return clean(
+        return clean_text(
             soup.get_text(" "),
-            9000
+            7000
         )
 
     except Exception as exc:
@@ -208,19 +233,13 @@ def read_webpage(
 
 
 # ============================================================
-# RESEARCH SEARCHES
+# SEARCH QUERY BUILDER
 # ============================================================
 
-def perform_searches(
+def build_queries(
     topic,
-    depth,
-    max_sources
+    depth
 ):
-
-    max_sources = min(
-        int(max_sources),
-        8
-    )
 
     queries = [
         f'"{topic}" research',
@@ -233,30 +252,75 @@ def perform_searches(
         "Comprehensive"
     ):
 
-        queries.extend([
-            f'"{topic}" academic research',
-            f'"{topic}" systematic review',
-        ])
+        queries.extend(
+            [
+                f'"{topic}" academic study',
+                f'"{topic}" systematic review',
+            ]
+        )
 
     if depth == "Comprehensive":
 
-        queries.extend([
-            f'"{topic}" government report',
-            f'"{topic}" official data',
-        ])
+        queries.extend(
+            [
+                f'"{topic}" government report',
+                f'"{topic}" official data',
+            ]
+        )
+
+    return queries
+
+
+# ============================================================
+# MULTI-QUERY RESEARCH SEARCH
+# ============================================================
+
+def perform_searches(
+    topic,
+    depth,
+    max_sources
+):
+
+    max_sources = max(
+        1,
+        min(
+            int(max_sources),
+            8
+        )
+    )
+
+    queries = build_queries(
+        topic,
+        depth
+    )
 
     seen = set()
+
     results = []
 
     for query in queries:
 
-        for result in search_web(
+        print(
+            f"Research search: {query}"
+        )
+
+        found = search_web(
             query,
-            max_results=4
-        ):
+            max_results=5
+        )
+
+        for item in found:
+
+            url = item.get(
+                "url",
+                ""
+            ).strip()
+
+            if not url:
+                continue
 
             key = (
-                result["url"]
+                url
                 .rstrip("/")
                 .lower()
             )
@@ -265,9 +329,11 @@ def perform_searches(
                 continue
 
             seen.add(key)
-            results.append(result)
+
+            results.append(item)
 
             if len(results) >= max_sources:
+
                 return results
 
     return results
