@@ -2,22 +2,10 @@ import os
 import streamlit as st
 
 
-# ============================================================
-# DEFAULT GROQ MODEL
-# ============================================================
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
-DEFAULT_MODEL = "openai/gpt-oss-20b"
-
-
-# ============================================================
-# SECRET HELPER
-# ============================================================
 
 def get_secret(name: str, default=None):
-    """
-    Read a value from Streamlit Secrets first.
-    Fall back to environment variables.
-    """
 
     try:
         value = st.secrets.get(name)
@@ -35,28 +23,11 @@ def get_secret(name: str, default=None):
     return default
 
 
-# ============================================================
-# GROQ API KEY
-# ============================================================
-
 def get_groq_api_key():
     return get_secret("GROQ_API_KEY")
 
 
-# ============================================================
-# GROQ MODEL
-# ============================================================
-
 def get_groq_model():
-    """
-    Return a normalized Groq model ID.
-
-    Accepted examples:
-
-        openai/gpt-oss-20b
-        gpt-oss-20b
-        groq/openai/gpt-oss-20b
-    """
 
     model = get_secret(
         "GROQ_MODEL",
@@ -68,31 +39,24 @@ def get_groq_model():
 
     model = str(model).strip()
 
-    # Remove accidental Groq provider prefix
+    # Remove accidental provider prefix
     if model.startswith("groq/"):
         model = model[len("groq/"):]
 
-    # GPT-OSS models need the OpenAI model namespace
-    if model == "gpt-oss-20b":
-        return "openai/gpt-oss-20b"
-
+    # Normalize GPT-OSS 120B
     if model == "gpt-oss-120b":
         return "openai/gpt-oss-120b"
 
-    # Already correctly formatted
-    if model.startswith("openai/"):
-        return model
+    if model == "openai/gpt-oss-120b":
+        return "openai/gpt-oss-120b"
 
     return model
 
 
-# ============================================================
-# CONFIGURATION VALIDATION
-# ============================================================
-
 def validate_configuration():
 
     api_key = get_groq_api_key()
+
     model = get_groq_model()
 
     if not api_key:
@@ -100,9 +64,10 @@ def validate_configuration():
             "GROQ_API_KEY is missing from Streamlit Secrets."
         )
 
-    if not model:
+    if model != "openai/gpt-oss-120b":
         return (
-            "GROQ_MODEL is missing from Streamlit Secrets."
+            "GROQ_MODEL must be "
+            "openai/gpt-oss-120b"
         )
 
     return None
