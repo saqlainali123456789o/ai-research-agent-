@@ -1,34 +1,123 @@
 from urllib.parse import urlparse
 
-PRIMARY = (
-    ".gov", ".gov.uk", ".gov.au", ".gov.pk", ".edu", ".ac.uk",
-    "who.int", "worldbank.org", "imf.org", "oecd.org", "un.org",
-    "unicef.org", "nih.gov", "ncbi.nlm.nih.gov", "nasa.gov"
-)
-ACADEMIC = (
-    "nature.com", "sciencedirect.com", "springer.com", "ieee.org",
-    "pubmed.ncbi.nlm.nih.gov", "jstor.org", "ssrn.com", "arxiv.org"
-)
 
-def classify(url):
+HIGH_QUALITY_DOMAINS = {
+
+    "gov": 5,
+    "edu": 5,
+
+    "who.int": 5,
+    "worldbank.org": 5,
+    "imf.org": 5,
+    "oecd.org": 5,
+    "un.org": 5,
+
+    "nature.com": 5,
+    "sciencedirect.com": 5,
+    "springer.com": 5,
+    "pubmed.ncbi.nlm.nih.gov": 5,
+
+    "reuters.com": 4,
+    "apnews.com": 4,
+    "bbc.com": 4,
+}
+
+
+def get_domain(url):
+
     try:
-        d = urlparse(url).netloc.lower().removeprefix("www.")
-    except Exception:
-        d = ""
-    if any(d.endswith(x) or d == x for x in PRIMARY):
-        return "Primary / authoritative", "Tier 1", 5
-    if any(d.endswith(x) or d == x for x in ACADEMIC):
-        return "Academic / research", "Tier 1", 5
-    if d.endswith(".org"):
-        return "Organization", "Tier 2", 3
-    if d.endswith(".com") or d.endswith(".net"):
-        return "General publication", "Tier 3", 2
-    return "General web", "Tier 4", 1
 
-def enrich(source):
-    kind,tier,score = classify(source["url"])
-    source.update(source_type=kind, quality_tier=tier, quality_score=score)
+        return (
+            urlparse(url)
+            .netloc
+            .lower()
+            .removeprefix("www.")
+        )
+
+    except Exception:
+
+        return ""
+
+
+def score_source(source):
+
+    url = source.get(
+        "url",
+        ""
+    )
+
+    domain = get_domain(
+        url
+    )
+
+    score = 1
+
+    tier = "Standard"
+
+    for trusted_domain, value in HIGH_QUALITY_DOMAINS.items():
+
+        if (
+            domain == trusted_domain
+            or domain.endswith(
+                "." + trusted_domain
+            )
+        ):
+
+            score = value
+
+            if value >= 5:
+                tier = "High"
+
+            elif value >= 4:
+                tier = "Good"
+
+            break
+
+    source["quality_score"] = score
+
+    source["quality_tier"] = tier
+
+    if not source.get(
+        "source_type"
+    ):
+
+        if (
+            ".edu" in domain
+            or ".gov" in domain
+        ):
+
+            source["source_type"] = (
+                "Academic/Government"
+            )
+
+        else:
+
+            source["source_type"] = (
+                "Web source"
+            )
+
     return source
 
+
 def rank(sources):
-    return sorted((enrich(s) for s in sources), key=lambda x:x["quality_score"], reverse=True)
+
+    scored = []
+
+    for source in sources:
+
+        scored.append(
+            score_source(
+                source
+            )
+        )
+
+    scored.sort(
+        key=lambda item:
+        item.get(
+            "quality_score",
+            0
+        ),
+        reverse=True,
+    )
+
+    return scored
